@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>&lt;no title&gt; &#8212; dse test 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=12dfc556" />
+    <script src="_static/documentation_options.js?v=2709fde1"></script>
+    <script src="_static/doctools.js?v=888ff710"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <dl>
+<dt>{</dt><dd><dl>
+<dt>“cells”: [</dt><dd><dl>
+<dt>{</dt><dd><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“# Amazon SageMaker Pipelines: Deploying End-to-End Machine learning Pipelines in the Cloudn”</p>
+</div></blockquote>
+<p>]</p>
+</dd>
+</dl>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“The purpose of this notebook is to deploy an End-To-End Machine Learning Pipeline with Amazon SageMaker. We will work with [Adult Census Income](<a class="reference external" href="https://www.kaggle.com/uciml/adult-census-income">https://www.kaggle.com/uciml/adult-census-income</a>) Dataset. We will use ‘income’, a binary variable that explains if a person earns more than 50k or not, as the target variable. For the training step, we will use an image of XGBoost. n”,
+“n”,
+“In order to replicate the results in your SageMaker Studio, please clone the repository (if you don’t know how to do it look for it in the README.md). n”,
+“n”,
+“Once you have this notebook and the data in your SageMaker Studio, is time to start!n”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“First we set the required dependencies to use SageMaker:”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 2,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“import boto3n”,
+“import sagemakern”,
+“n”,
+“n”,
+“region = boto3.Session().region_namen”,
+“sagemaker_session = sagemaker.session.Session()n”,
+“role = sagemaker.get_execution_role()n”,
+“default_bucket = sagemaker_session.default_bucket() # the default S3 bucket where you will store everything that cames from the pipelinen”,
+“model_package_group_name = f&quot;AdultModelPackageGroupName&quot;”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“In the next cell we will copy the data from the local path (the data from the side bar) to the  default S3 bucket.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 3,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“local_path = &quot;data/adult.csv&quot; # local path where you have the datan”,
+“n”,
+“s3 = boto3.resource(&quot;s3&quot;)n”,
+“base_uri = f&quot;s3://{default_bucket}/adult&quot;n”,
+“n”,
+“# This line copies your data in the local path to a default S3 bucketn”,
+“input_data_uri = sagemaker.s3.S3Uploader.upload(n”,
+“    local_path=local_path,n”,
+“    desired_s3_uri=base_uri,n”,
+“) “</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Now we will specify some parameters that will be useful when setting the pipeline. Since we will manage a good amount of variables, I think is a good practice to use the Find bar (ctrl+F) to see when a variable will be used or where it came from.  “</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 4,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.workflow.parameters import (n”,
+“    ParameterInteger,n”,
+“    ParameterString,n”,
+“)n”,
+“n”,
+“n”,
+“processing_instance_count = ParameterInteger(name=&quot;ProcessingInstanceCount&quot;, default_value=1)n”,
+“n”,
+“n”,
+“processing_instance_type = ParameterString(n”,
+“    name=&quot;ProcessingInstanceType&quot;, default_value=&quot;ml.m5.xlarge&quot;n”,
+“)n”,
+“n”,
+“training_instance_type = ParameterString(name=&quot;TrainingInstanceType&quot;, default_value=&quot;ml.m5.xlarge&quot;)n”,
+“n”,
+“n”,
+“model_approval_status = ParameterString(n”,
+“    name=&quot;ModelApprovalStatus&quot;, default_value=&quot;PendingManualApproval&quot;n”,
+“)n”,
+“n”,
+“input_data = ParameterString(n”,
+“    name=&quot;InputData&quot;,n”,
+“    default_value=input_data_uri,n”,
+“)n”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“# Preprocessing Step”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Now its time to go with the first step. We will create a preprocessing script and store it in a folder called ‘adult’. Then we will create a <code class="docutils literal notranslate"><span class="pre">`SKLearnProcessor`</span></code> instance and specify some dependencies to run the Preprocessing Step. Finally, we will pass the code and the Processor to a <code class="docutils literal notranslate"><span class="pre">`ProcessingStep`</span></code>.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 5,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“!mkdir -p adult # create a folder called ‘adult’”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 6,
+“metadata”: {},
+“outputs”: [</p>
+<blockquote>
+<div><dl>
+<dt>{</dt><dd><p>“name”: “stdout”,
+“output_type”: “stream”,
+“text”: [</p>
+<blockquote>
+<div><p>“Overwriting adult/preprocessing.pyn”</p>
+</div></blockquote>
+<p>]</p>
+</dd>
+</dl>
+<p>}</p>
+</div></blockquote>
+<p>],
+“source”: [</p>
+<blockquote>
+<div><p>“%%writefile adult/preprocessing.py n”,
+“n”,
+“import pandas as pdn”,
+“import numpy as npn”,
+“n”,
+“n”,
+“if __name__ == &quot;__main__&quot;:n”,
+“    n”,
+“    base_dir = &quot;/opt/ml/processing&quot; # this path will make more sense once you build the ProcessingStepn”,
+“    # read datan”,
+“    df = pd.read_csv(f&quot;{base_dir}/input/adult.csv&quot;, sep=&quot;,&quot;, n”,
+“                     error_bad_lines=False, engine=’python’) # just to avoid an errorn”,
+“n”,
+“    # target variable to binaryn”,
+“    df[‘income’].replace([‘&lt;=50K’,’&gt;50K’],[0,1], inplace=True) n”,
+“n”,
+“    # drop useless variablesn”,
+“    df = df.drop(‘fnlwgt’, axis=1)n”,
+“    df = df.drop(‘education.num’, axis=1)n”,
+“n”,
+“    # drop rows with missing datan”,
+“    df = df.loc[ (df[‘workclass’] != ‘?’) &amp; (df[‘occupation’] != ‘?’) &amp; (df[‘native.country’]!= ‘?’)]n”,
+“n”,
+“    # split data into dependent and independent variablesn”,
+“    X = df.drop(‘income’, axis=1)n”,
+“    y = df[‘income’]n”,
+“n”,
+“    # split dependent variables into continous and categorical variablesn”,
+“    X_continous  = X[[‘age’, ‘capital.gain’, ‘capital.loss’, ‘hours.per.week’]]n”,
+“n”,
+“    X_categorical = X[[‘workclass’, ‘education’, ‘marital.status’, ‘occupation’, ‘relationship’, ‘race’,n”,
+“                    ‘sex’, ‘native.country’]]n”,
+“n”,
+“n”,
+“    # One hot encodingn”,
+“    X_encoded = pd.get_dummies(X_categorical)n”,
+“n”,
+“    # Concatenate both continous and encoded sets:n”,
+“    X = pd.concat([X_continous, X_encoded],axis=1)n”,
+“n”,
+“    y = y.to_numpy().reshape(y.shape[0],1)n”,
+“    X = X.to_numpy()n”,
+“n”,
+“    # create the processed datasetn”,
+“    dataset = np.concatenate((y, X), axis=1)n”,
+“n”,
+“    np.random.shuffle(dataset)n”,
+“    n”,
+“    # Split into train validation and test datasetsn”,
+“    train, validation, test = np.split(dataset, [int(.6*len(dataset)), int(.7*len(dataset))])n”,
+“n”,
+“    # Save the datan”,
+“    pd.DataFrame(train).to_csv(f&quot;{base_dir}/train/train.csv&quot;, header=False, index=False)n”,
+“    pd.DataFrame(validation).to_csv(f&quot;{base_dir}/validation/validation.csv&quot;, header=False, index=False)n”,
+“    pd.DataFrame(test).to_csv(f&quot;{base_dir}/test/test.csv&quot;, header=False, index=False)n”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Now we can create a SKLearn processor instance:”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 7,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.sklearn.processing import SKLearnProcessorn”,
+“n”,
+“n”,
+“framework_version = &quot;0.23-1&quot;n”,
+“n”,
+“sklearn_processor = SKLearnProcessor(n”,
+“    framework_version=framework_version,n”,
+“    instance_type=processing_instance_type,n”,
+“    instance_count=processing_instance_count,n”,
+“    base_job_name=&quot;sklearn-adult-process&quot;,n”,
+“    role=role,n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Finally we pass the processor and the code into a <code class="docutils literal notranslate"><span class="pre">`ProcessingStep`</span></code>. We also specify the inputs and outputs paths. n”,
+“NOTE: ‘/opt/ml/processing’ is just a default path in the processing container. You can take a quick look  [here](<a class="reference external" href="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html">https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html</a>) if you want more information.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 8,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.processing import ProcessingInput, ProcessingOutputn”,
+“from sagemaker.workflow.steps import ProcessingStepn”,
+“n”,
+“n”,
+“step_process = ProcessingStep(n”,
+“    name=&quot;adultProcess&quot;,n”,
+“    processor=sklearn_processor, # SKLearnProcessorn”,
+“    inputs=[n”,
+“        ProcessingInput(source=input_data, destination=&quot;/opt/ml/processing/input&quot;),n”,
+“    ], # copies the data from the S3 bucket to the containern”,
+“    outputs=[n”,
+“        ProcessingOutput(output_name=&quot;train&quot;, source=&quot;/opt/ml/processing/train&quot;),n”,
+“        ProcessingOutput(output_name=&quot;validation&quot;, source=&quot;/opt/ml/processing/validation&quot;),n”,
+“        ProcessingOutput(output_name=&quot;test&quot;, source=&quot;/opt/ml/processing/test&quot;),n”,
+“    ], # You store the output in s3 (example: sagemaker-us-east-&lt;&gt;/&lt;base_job_name&gt;/output/train/train.csv)n”,
+“    code=&quot;adult/preprocessing.py&quot;, n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“# Training Step”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“In this step we are going to import a build-in image of XGBoost and use it as the estimator for the <code class="docutils literal notranslate"><span class="pre">`TrainingStep`</span></code> class. We also need to set the hyperparameters. When building the <code class="docutils literal notranslate"><span class="pre">`TrainingStep`</span></code> we will pass the estimator and the inputs (‘train.csv’ and ‘test.csv’)n”,
+“n”,
+“n”,
+“n”,
+“NOTE: You can also perform [automatic model tuning](<a class="reference external" href="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html">https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html</a>) with SageMaker.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 9,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.estimator import Estimatorn”,
+“n”,
+“# Set the model path in the S3 bucketn”,
+“model_path = f&quot;s3://{default_bucket}/adultTrain&quot;n”,
+“n”,
+“# Retrieve the XGBoost image from the SageMaker repositoryn”,
+“image_uri = sagemaker.image_uris.retrieve(n”,
+“    framework=&quot;xgboost&quot;,n”,
+“    region=region,n”,
+“    version=&quot;1.0-1&quot;,n”,
+“    py_version=&quot;py3&quot;,n”,
+“    instance_type=training_instance_type,n”,
+“)n”,
+“n”,
+“# Set the XGBoost image as an estimatorn”,
+“xgb_train = Estimator(n”,
+“    image_uri=image_uri,n”,
+“    instance_type=training_instance_type,n”,
+“    instance_count=1,n”,
+“    output_path=model_path,n”,
+“    role=role,n”,
+“)n”,
+“n”,
+“n”,
+“# Set the hyperparameters n”,
+“xgb_train.set_hyperparameters(n”,
+“    objective=&quot;binary:logistic&quot;, n”,
+“    num_round=50, n”,
+“    max_depth=5, n”,
+“    subsample=1, n”,
+“    silent=0,n”,
+“    eval_metric=&quot;logloss&quot;,n”,
+“    eta=0.3, n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Now that we have our estimator, we can pass it to the <code class="docutils literal notranslate"><span class="pre">`TrainingStep`</span></code> class. We also specify the data inputs (‘train.csv’ and ‘validation.csv’)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 10,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.inputs import TrainingInputn”,
+“from sagemaker.workflow.steps import TrainingStepn”,
+“n”,
+“n”,
+“step_train = TrainingStep(n”,
+“    name=&quot;adultTrain&quot;,n”,
+“    estimator=xgb_train,n”,
+“    # Data inputs in this step are the outputs in the previous step (‘train.csv’ and ‘validation.csv’) n”,
+“    inputs={n”,
+“        &quot;train&quot;: TrainingInput(n”,
+“            s3_data=step_process.properties.ProcessingOutputConfig.Outputs[&quot;train&quot;].S3Output.S3Uri,n”,
+“            content_type=&quot;text/csv&quot;,    n”,
+“        ),n”,
+“        n”,
+“        &quot;validation&quot;: TrainingInput(n”,
+“            s3_data=step_process.properties.ProcessingOutputConfig.Outputs[n”,
+“                &quot;validation&quot;n”,
+“            ].S3Output.S3Uri,n”,
+“            content_type=&quot;text/csv&quot;,n”,
+“        ),n”,
+“    },n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“# Evaluation Step”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“In this step first we develop an evaluation script. Then we create a Processor intance with <code class="docutils literal notranslate"><span class="pre">`ScriptProcessor`</span></code> and a property file with <code class="docutils literal notranslate"><span class="pre">`PropertyFile`</span></code>. Finally we develop the <code class="docutils literal notranslate"><span class="pre">`ProcessingStep`</span></code>.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 11,
+“metadata”: {},
+“outputs”: [</p>
+<blockquote>
+<div><dl>
+<dt>{</dt><dd><p>“name”: “stdout”,
+“output_type”: “stream”,
+“text”: [</p>
+<blockquote>
+<div><p>“Overwriting adult/evaluation.pyn”</p>
+</div></blockquote>
+<p>]</p>
+</dd>
+</dl>
+<p>}</p>
+</div></blockquote>
+<p>],
+“source”: [</p>
+<blockquote>
+<div><p>“%%writefile adult/evaluation.pyn”,
+“n”,
+“import jsonn”,
+“import pathlibn”,
+“import picklen”,
+“import tarfilen”,
+“n”,
+“n”,
+“import numpy as npn”,
+“import pandas as pdn”,
+“import xgboostn”,
+“n”,
+“n”,
+“from sklearn.metrics import mean_squared_errorn”,
+“from sklearn.metrics import accuracy_scoren”,
+“n”,
+“if __name__ == &quot;__main__&quot;:n”,
+“    # import the modeln”,
+“    model_path = f&quot;/opt/ml/processing/model/model.tar.gz&quot;n”,
+“    with tarfile.open(model_path) as tar:n”,
+“        tar.extractall(path=&quot;.&quot;)n”,
+“    n”,
+“    model = pickle.load(open(&quot;xgboost-model&quot;, &quot;rb&quot;))n”,
+“n”,
+“    # import test setn”,
+“    test_path = &quot;/opt/ml/processing/test/test.csv&quot;n”,
+“    df = pd.read_csv(test_path, header=None)n”,
+“    n”,
+“n”,
+“    # Split into dependent and independent variablesn”,
+“    y_test = df.iloc[:, 0].to_numpy()n”,
+“    df.drop(df.columns[0], axis=1, inplace=True)n”,
+“    X_test = xgboost.DMatrix(df.values)n”,
+“    n”,
+“    # make predictionsn”,
+“    predictions = model.predict(X_test)n”,
+“    predictions = np.where(predictions &gt; 0.5, 1, 0 )n”,
+“ n”,
+“    # compute accuracyn”,
+“    acc = accuracy_score(y_test, predictions)n”,
+“    n”,
+“    # Create a json file with the metrics resultsn”,
+“    report_dict = {n”,
+“        &quot;metrics&quot;: {n”,
+“            &quot;accuracy&quot;: {n”,
+“                &quot;value&quot;: accn”,
+“            },n”,
+“        },n”,
+“    }n”,
+“    n”,
+“    # Set the output directoryn”,
+“    output_dir = &quot;/opt/ml/processing/evaluation&quot;n”,
+“    pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)n”,
+“n”,
+“    # Save the json file with the metrics resultn”,
+“    evaluation_path = f&quot;{output_dir}/evaluation.json&quot;n”,
+“    with open(evaluation_path, &quot;w&quot;) as f:n”,
+“        f.write(json.dumps(report_dict))”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Next step is setting the processor instance. “</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 12,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.processing import ScriptProcessorn”,
+“n”,
+“n”,
+“script_eval = ScriptProcessor(n”,
+“    image_uri=image_uri, # The XGBoost imagen”,
+“    command=[&quot;python3&quot;], # We run python3 inside the containern”,
+“    instance_type=processing_instance_type,n”,
+“    instance_count=1,n”,
+“    base_job_name=&quot;script-adult-eval&quot;,n”,
+“    role=rolen”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Before defining the <code class="docutils literal notranslate"><span class="pre">`ProcessingStep`</span></code> we are going to define a <code class="docutils literal notranslate"><span class="pre">`PropertyFile`</span></code>. You use property files to store information from the output of a processing step. This is particularly useful when analyzing the results of a processing step to decide how a conditional step should be executed.n”,
+“n”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 13,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.workflow.properties import PropertyFilen”,
+“n”,
+“n”,
+“evaluation_report = PropertyFile(n”,
+“    name=&quot;EvaluationReport&quot;, output_name=&quot;evaluation&quot;, path=&quot;evaluation.json&quot;n”,
+“)n”,
+“n”,
+“# The path parameter is the name of the JSON file that the property file is saved to.n”,
+“# output_name must match the output_name of the ProcessingOutput that you define in your processing step.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Now we can define the <code class="docutils literal notranslate"><span class="pre">`ProcessingStep`</span></code>. We pass the <code class="docutils literal notranslate"><span class="pre">`ScriptProcessor`</span></code>, the inputs (‘model.tar.gz’ and ‘test.csv’), the <code class="docutils literal notranslate"><span class="pre">`PropertyFile`</span></code> and the evaluation.py script.n”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 14,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“step_eval = ProcessingStep(n”,
+“    name=&quot;adultEval&quot;,n”,
+“    processor=script_eval,n”,
+“    inputs=[n”,
+“        ProcessingInput(n”,
+“            source=step_train.properties.ModelArtifacts.S3ModelArtifacts, # S3 path of model.tar.gzn”,
+“            destination=&quot;/opt/ml/processing/model&quot;, # destination in the processing containern”,
+“        ),n”,
+“        ProcessingInput(n”,
+“            source=step_process.properties.ProcessingOutputConfig.Outputs[&quot;test&quot;].S3Output.S3Uri, # S3 path to test.csvn”,
+“            destination=&quot;/opt/ml/processing/test&quot;, # destination in the processing containern”,
+“        ),n”,
+“    ],n”,
+“    outputs=[n”,
+“        ProcessingOutput(output_name=&quot;evaluation&quot;, source=&quot;/opt/ml/processing/evaluation&quot;),n”,
+“    ], # the output is the ‘evaluation.json’ filen”,
+“    code=&quot;adult/evaluation.py&quot;,n”,
+“    property_files=[evaluation_report],n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“# Create Model Step”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“If the model passes the condition step (defined below), we create a SageMaker Model. A SageMaker Model is an instance that can be deployed to an Endpoint. First we create a model with the```Model``` class. We pass the XGBoost image and the ‘model.tar.gz’ file to it. Then we create an input with the <code class="docutils literal notranslate"><span class="pre">`CreateModelInput`</span></code> class. Finally we pass both of them to the <code class="docutils literal notranslate"><span class="pre">`CreateModelStep`</span></code>.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 15,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.model import Modeln”,
+“n”,
+“n”,
+“model = Model(n”,
+“    image_uri=image_uri, # the XGBoost imagen”,
+“    model_data=step_train.properties.ModelArtifacts.S3ModelArtifacts, # The S3 location of the ‘model.tar.gz’ filen”,
+“    sagemaker_session=sagemaker_session,n”,
+“    role=role,n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 16,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.inputs import CreateModelInputn”,
+“n”,
+“n”,
+“inputs = CreateModelInput(n”,
+“    instance_type=&quot;ml.m5.large&quot;,n”,
+“    accelerator_type=&quot;ml.eia1.medium&quot;,n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 17,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.workflow.steps import CreateModelStepn”,
+“n”,
+“n”,
+“step_create_model = CreateModelStep(n”,
+“    name=&quot;adultCreateModel&quot;,n”,
+“    model=model,n”,
+“    inputs=inputs,n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“# Register Model Step”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“We register the model if it passes a condition step (defined below). For the Register Model Step, first we set the model metrics with the <code class="docutils literal notranslate"><span class="pre">`ModelMetrics`</span></code> class, passing the ‘evaluation.json’ file to it. Then we create the Register Model Step with the <code class="docutils literal notranslate"><span class="pre">`RegisterModel`</span></code> class. We pass the estimator, the ‘model.tar.gz’ file and the model metrics object to it. “</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 18,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.model_metrics import MetricsSource, ModelMetricsn”,
+“from sagemaker.workflow.step_collections import RegisterModeln”,
+“n”,
+“n”,
+“model_metrics = ModelMetrics(n”,
+“    model_statistics=MetricsSource(n”,
+“        s3_uri=&quot;{}/evaluation.json&quot;.format(n”,
+“            step_eval.arguments[&quot;ProcessingOutputConfig&quot;][&quot;Outputs&quot;][0][&quot;S3Output&quot;][&quot;S3Uri&quot;]n”,
+“        ),n”,
+“        content_type=&quot;application/json&quot;,n”,
+“    )n”,
+“)n”,
+“step_register = RegisterModel(n”,
+“    name=&quot;adultRegisterModel&quot;,n”,
+“    estimator=xgb_train,n”,
+“    model_data=step_train.properties.ModelArtifacts.S3ModelArtifacts, # The S3 uri to the ‘model.tar.gz’ filen”,
+“    content_types=[&quot;text/csv&quot;],n”,
+“    response_types=[&quot;text/csv&quot;],n”,
+“    inference_instances=[&quot;ml.t2.medium&quot;, &quot;ml.m5.xlarge&quot;],n”,
+“    transform_instances=[&quot;ml.m5.xlarge&quot;],n”,
+“    model_package_group_name=model_package_group_name,n”,
+“    approval_status=model_approval_status,n”,
+“    model_metrics=model_metrics,n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“# Condition step”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“For the Condition Step, we will create a condition with the <code class="docutils literal notranslate"><span class="pre">`ConditionGreaterThanOrEqualTo`</span></code> class, defining a threshold and the accuracy value. Then we will pass the Condition object to the <code class="docutils literal notranslate"><span class="pre">`ConditionStep`</span></code>.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 19,
+“metadata”: {},
+“outputs”: [</p>
+<blockquote>
+<div><dl>
+<dt>{</dt><dd><p>“name”: “stderr”,
+“output_type”: “stream”,
+“text”: [</p>
+<blockquote>
+<div><p>“The class JsonGet has been renamed in sagemaker&gt;=2.n”,
+“See: <a class="reference external" href="https://sagemaker.readthedocs.io/en/stable/v2.html">https://sagemaker.readthedocs.io/en/stable/v2.html</a> for details.n”</p>
+</div></blockquote>
+<p>]</p>
+</dd>
+</dl>
+<p>}</p>
+</div></blockquote>
+<p>],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTon”,
+“from sagemaker.workflow.condition_step import (n”,
+“    ConditionStep,n”,
+“    JsonGet,n”,
+“)n”,
+“n”,
+“n”,
+“condition = ConditionGreaterThanOrEqualTo(n”,
+“    left=JsonGet(n”,
+“        step=step_eval,n”,
+“        property_file=evaluation_report, # we pass the property file objectn”,
+“        json_path=&quot;metrics.accuracy.value&quot;,n”,
+“    ),n”,
+“    right=0.8, # the thresholdn”,
+“)n”,
+“n”,
+“step_cond = ConditionStep(n”,
+“    name=&quot;adultAccCond&quot;,n”,
+“    conditions=[condition],n”,
+“    if_steps=[step_register, step_create_model], # if the condition is true we execute the Register Model and Create Model stepsn”,
+“    else_steps=[],n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“# Create the Pipeline”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“We will create a pipeline with the <code class="docutils literal notranslate"><span class="pre">`Pipeline`</span></code> class.  We have to pass the parameters that we use in the steps (the ones defined at the beginning of the notebook), and the steps of the pipeline. The create model step and register model step are triggered if the condition from the condition step is true, so we don’t need to specify them in the pipeline.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 20,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“from sagemaker.workflow.pipeline import Pipelinen”,
+“n”,
+“n”,
+“pipeline_name = f&quot;adultPipeline&quot;n”,
+“pipeline = Pipeline(n”,
+“    name=pipeline_name,n”,
+“    parameters=[n”,
+“        processing_instance_type,n”,
+“        processing_instance_count,n”,
+“        training_instance_type,n”,
+“        model_approval_status,n”,
+“        input_data,n”,
+“    ],n”,
+“    steps=[step_process, step_train, step_eval, step_cond]n”,
+“)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Once we create a pipeline we can now [run it](<a class="reference external" href="https://docs.aws.amazon.com/sagemaker/latest/dg/run-pipeline.html">https://docs.aws.amazon.com/sagemaker/latest/dg/run-pipeline.html</a>). First we submit the pipeline definition to the SageMaker Pipelines service to create a pipeline if it doesn’t exist, or update the pipeline if it does. “</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 21,
+“metadata”: {},
+“outputs”: [</p>
+<blockquote>
+<div><dl>
+<dt>{</dt><dd><p>“name”: “stderr”,
+“output_type”: “stream”,
+“text”: [</p>
+<blockquote>
+<div><p>“No finished training job found associated with this estimator. Please make sure this estimator is only used for building workflow confign”,
+“No finished training job found associated with this estimator. Please make sure this estimator is only used for building workflow confign”</p>
+</div></blockquote>
+<p>]</p>
+</dd>
+</dl>
+<p>}</p>
+</div></blockquote>
+<p>],
+“source”: [</p>
+<blockquote>
+<div><p>“pipeline.upsert(role_arn=role);”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Now that we have defined the pipeline, we can just start it:”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 22,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“execution = pipeline.start()”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 23,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“execution.wait() # wait untill the process ends”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“Once the pipeline process is completed, we can check the output metrics from the evaluation step (the ‘evaluation.json’ file).  “</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: 24,
+“metadata”: {},
+“outputs”: [</p>
+<blockquote>
+<div><dl>
+<dt>{</dt><dd><p>“name”: “stdout”,
+“output_type”: “stream”,
+“text”: [</p>
+<blockquote>
+<div><p>“{‘metrics’: {‘accuracy’: {‘value’: 0.8700408884959664}}}n”</p>
+</div></blockquote>
+<p>]</p>
+</dd>
+</dl>
+<p>}</p>
+</div></blockquote>
+<p>],
+“source”: [</p>
+<blockquote>
+<div><p>“from pprint import pprintn”,
+“import jsonn”,
+“n”,
+“evaluation_json = sagemaker.s3.S3Downloader.read_file(n”,
+“    &quot;{}/evaluation.json&quot;.format(n”,
+“        step_eval.arguments[&quot;ProcessingOutputConfig&quot;][&quot;Outputs&quot;][0][&quot;S3Output&quot;][&quot;S3Uri&quot;]n”,
+“    )n”,
+“)n”,
+“pprint(json.loads(evaluation_json))”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“You can also see all the steps in the pipeline as well as their inputs and outputs with the following code. I won’t run it just in order to not share my account information.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “code”,
+“execution_count”: null,
+“metadata”: {},
+“outputs”: [],
+“source”: [</p>
+<blockquote>
+<div><p>“import timen”,
+“from sagemaker.lineage.visualizer import LineageTableVisualizern”,
+“n”,
+“n”,
+“viz = LineageTableVisualizer(sagemaker.session.Session())n”,
+“for execution_step in reversed(execution.list_steps()):n”,
+“    print(execution_step)n”,
+“    display(viz.show(pipeline_execution_step=execution_step))n”,
+“    time.sleep(5)”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>},
+{</p>
+<blockquote>
+<div><p>“cell_type”: “markdown”,
+“metadata”: {},
+“source”: [</p>
+<blockquote>
+<div><p>“If you want to check the different Jobs created, you can go to Amazon Sagemaker and look at them in the sidebar. It should be a Training Job in the Training section, three Processing Jobs in the Processing section and a model in the Inference section.”</p>
+</div></blockquote>
+<p>]</p>
+</div></blockquote>
+<p>}</p>
+</dd>
+</dl>
+<p>],
+“metadata”: {</p>
+<blockquote>
+<div><p>“instance_type”: “ml.t3.medium”,
+“kernelspec”: {</p>
+<blockquote>
+<div><p>“display_name”: “Python 3 (Data Science)”,
+“language”: “python”,
+“name”: “python3__SAGEMAKER_INTERNAL__arn:aws:sagemaker:us-east-1:081325390199:image/datascience-1.0”</p>
+</div></blockquote>
+<p>},
+“language_info”: {</p>
+<blockquote>
+<div><dl class="simple">
+<dt>“codemirror_mode”: {</dt><dd><p>“name”: “ipython”,
+“version”: 3</p>
+</dd>
+</dl>
+<p>},
+“file_extension”: “.py”,
+“mimetype”: “text/x-python”,
+“name”: “python”,
+“nbconvert_exporter”: “python”,
+“pygments_lexer”: “ipython3”,
+“version”: “3.7.10”</p>
+</div></blockquote>
+<p>}</p>
+</div></blockquote>
+<p>},
+“nbformat”: 4,
+“nbformat_minor”: 4</p>
+</dd>
+</dl>
+<p>}</p>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">dse test</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, ameet.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 7.2.6</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+      |
+      <a href="_sources/SageMaker-Pipeline.ipynb.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
